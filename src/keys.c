@@ -534,29 +534,9 @@ keys_display_bindings_bar(WINDOW * win, int *bindings, int count,
 			label = gettext(keydef[binding_key].sb_label);
 		} else {
 			switch (binding_key) {
-			case KEY_CONFIGMENU_GENERAL:
-				strcpy(key, "g");
-				label = _("General");
-				break;
-			case KEY_CONFIGMENU_LAYOUT:
-				strcpy(key, "l");
-				label = _("Layout");
-				break;
-			case KEY_CONFIGMENU_SIDEBAR:
-				strcpy(key, "s");
-				label = _("Sidebar");
-				break;
-			case KEY_CONFIGMENU_COLOR:
-				strcpy(key, "c");
-				label = _("Color");
-				break;
-			case KEY_CONFIGMENU_NOTIFY:
-				strcpy(key, "n");
-				label = _("Notify");
-				break;
-			case KEY_CONFIGMENU_KEYS:
-				strcpy(key, "k");
-				label = _("Keys");
+			case KEY_BLANK:
+				strcpy(key, " ");
+				label = " ";
 				break;
 			default:
 				strcpy(key, "?");

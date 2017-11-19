@@ -99,11 +99,16 @@ void custom_remove_attr(WINDOW * win, int attr_num)
 		wattroff(win, attr.nocolor[attr_num]);
 }
 
-static void set_confwin_attr(struct window *cwin)
+static void confwin_attr(struct window *cwin)
 {
-	cwin->h = (notify_bar())? row - 3 : row - 2;
-	cwin->w = col;
-	cwin->x = cwin->y = 0;
+	/* the available screen area: h x w at (y,x) */
+	cwin->h = row
+		- STATUSHEIGHT
+		- (notify_bar()? 1 : 0)
+		- (conf.compact_panels ? 2 : 4);
+	cwin->w = col - 2;
+	cwin->y = conf.compact_panels ? 1 : 3;
+	cwin->x = 1;
 }
 
 /*
@@ -113,32 +118,162 @@ static void set_confwin_attr(struct window *cwin)
 static void confwin_init(struct window *confwin, const char *label)
 {
 	if (confwin->p) {
-		erase_window_part(confwin->p, confwin->x, confwin->y,
-				  confwin->x + confwin->w,
-				  confwin->y + confwin->h);
-		delwin(confwin->p);
+		werase(confwin->p);
+		wins_show(confwin->p, label);
+		return;
 	}
-
-	wins_get_config();
-	set_confwin_attr(confwin);
-	confwin->p = newwin(confwin->h, col, 0, 0);
-	box(confwin->p, 0, 0);
+	confwin->p = newwin(row - (notify_bar() ? 3 : 2), col, 0, 0);
+	confwin_attr(confwin);
 	wins_show(confwin->p, label);
-	delwin(win[STA].p);
-	win[STA].p =
-	    newwin(win[STA].h, win[STA].w, win[STA].y, win[STA].x);
-	keypad(win[STA].p, TRUE);
-	if (notify_bar()) {
-		notify_reinit_bar();
+	if (notify_bar())
 		notify_update_bar();
+}
+
+enum {
+	GENERAL,
+	LAYOUT,
+	SIDEBAR,
+	COLOUR,
+	NOTIFY,
+	KEYS,
+	NBOPTIONS
+};
+
+/* Print the main options highlighting the selected one. */
+static void custom_config_display(struct window *win, int selected)
+{
+	char *options[NBOPTIONS] = {
+		_("General options"),
+		_("Layout"),
+		_("Sidebar width"),
+		_("Colour"),
+		_("Notify bar"),
+		_("Key bindings")
+	};
+	int i, y, x, divider = 4;
+	/* origin */
+	y = win->y; x = win->x;
+	/* offset */
+	y += (win->h - (2 * NBOPTIONS - 1)) / 2 - 1;
+	for (i = 0; i < NBOPTIONS; i++) {
+		if (i > 0) {
+			y++; x = (win->w - divider) / 2;
+			mvwhline(win->p, y, x, ACS_HLINE, divider);
+		}
+		y++; x = (win->w - strlen(options[i])) / 2;
+		if (i == selected)
+			custom_apply_attr(win->p, ATTR_HIGHEST);
+		mvwprintw(win->p, y, x, "%s", options[i]);
+		if (i == selected)
+			custom_remove_attr(win->p, ATTR_HIGHEST);
+	}
+}
+
+void custom_config(void)
+{
+	struct window cwin;
+	const char *label = _("Configuration Menus");
+	int selected = GENERAL;
+	const char *no_color_support =
+	    _("Colors are not supported by your terminal\n"
+	      "(Press [ENTER] to continue).");
+
+	static int bindings[] = {
+		KEY_GENERIC_QUIT, KEY_GENERIC_SELECT,
+		KEY_MOVE_UP, KEY_MOVE_DOWN
+	};
+	wins_set_bindings(bindings, ARRAY_SIZE(bindings));
+	wins_status_bar();
+
+	cwin.p = NULL;
+	confwin_init(&cwin, label);
+	custom_config_display(&cwin, selected);
+
+	wnoutrefresh(win[STA].p);
+	wnoutrefresh(cwin.p);
+	wins_doupdate();
+	if (notify_bar())
+		notify_update_bar();
+
+	for (;;) {
+		int ch = keys_get(win[KEY].p, NULL, NULL);
+		switch (ch) {
+		case KEY_MOVE_UP:
+			selected = (selected - 1 + NBOPTIONS) % NBOPTIONS;
+			break;
+		case KEY_MOVE_DOWN:
+			selected = (selected + 1) % NBOPTIONS;
+			break;
+		case KEY_GENERIC_SELECT:
+			switch (selected) {
+			case GENERAL:
+				custom_general_config();
+				break;
+			case LAYOUT:
+				custom_layout_config();
+				break;
+			case SIDEBAR:
+				custom_sidebar_config();
+				break;
+			case COLOUR:
+				if (has_colors()) {
+					custom_color_config();
+				} else {
+					colorize = 0;
+					wins_erase_status_bar();
+					mvwaddstr(win[STA].p, 0, 0,
+						no_color_support);
+					keys_wgetch(win[KEY].p);
+				}
+				break;
+			case NOTIFY:
+				notify_config_bar();
+				break;
+			case KEYS:
+				custom_keys_config();
+				break;
+			}
+			/* in case of new layout, resize, etc. */
+			resize = 1;
+			break;
+		case KEY_GENERIC_QUIT:
+		case KEY_GENERIC_CANCEL:
+			delwin(cwin.p);
+			return;
+		case KEY_GENERIC_OTHER_CMD:
+			wins_other_status_page();
+			wins_status_bar();
+		case KEY_RESIZE:
+		case ERR:
+			/* Check whether SIGWINCH has been detected. */
+			if (!resize)
+				continue;
+			break;
+		default:
+			break;
+		}
+		if (resize) {
+			resize = 0;
+			wins_reset_noupdate();
+			delwin(cwin.p);
+			cwin.p = NULL;
+		}
+		wins_set_bindings(bindings, ARRAY_SIZE(bindings));
+		wins_status_bar();
+		confwin_init(&cwin, label);
+		custom_config_display(&cwin, selected);
+		wnoutrefresh(win[STA].p);
+		wnoutrefresh(cwin.p);
+		wins_doupdate();
 	}
 }
 
 static void layout_selection_bar(void)
 {
 	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_GENERIC_SELECT, KEY_MOVE_UP,
-		KEY_MOVE_DOWN, KEY_MOVE_LEFT, KEY_MOVE_RIGHT, KEY_GENERIC_HELP
+		KEY_GENERIC_QUIT, KEY_GENERIC_SELECT,
+		KEY_MOVE_UP, KEY_MOVE_DOWN,
+		KEY_MOVE_LEFT, KEY_MOVE_RIGHT
 	};
 	int bindings_size = ARRAY_SIZE(bindings);
 
@@ -248,6 +383,14 @@ void custom_layout_config(void)
 		case KEY_GENERIC_CANCEL:
 			need_reset = 1;
 			break;
+		case KEY_RESIZE:
+		case ERR:
+			/* Check whether SIGWINCH has been detected. */
+			if (!resize)
+				continue;
+			break;
+		default:
+			break;
 		}
 
 		if (resize) {
@@ -258,8 +401,10 @@ void custom_layout_config(void)
 			need_reset = 1;
 		}
 
-		if (need_reset)
+		if (need_reset) {
+			wins_get_config();
 			confwin_init(&conf_win, label);
+		}
 
 		display_layout_config(&conf_win, mark, cursor);
 	}
@@ -274,13 +419,16 @@ void custom_layout_config(void)
 void custom_sidebar_config(void)
 {
 	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_MOVE_UP, KEY_MOVE_DOWN, KEY_GENERIC_HELP
+		KEY_GENERIC_QUIT, KEY_BLANK,
+		KEY_MOVE_UP, KEY_MOVE_DOWN
 	};
-	int key, bindings_size = ARRAY_SIZE(bindings);
+	int key;
 
-	keys_display_bindings_bar(win[STA].p, bindings, bindings_size, 0,
-				  bindings_size);
-	wins_doupdate();
+	/* Display the three main windows ... */
+	wins_reset();
+	/* ... with the side bar menu. */
+	wins_set_bindings(bindings, ARRAY_SIZE(bindings));
+	wins_status_bar();
 
 	while ((key = keys_get(win[KEY].p, NULL, NULL)) != KEY_GENERIC_QUIT) {
 		switch (key) {
@@ -299,13 +447,13 @@ void custom_sidebar_config(void)
 		if (resize) {
 			resize = 0;
 			wins_reset();
+			wins_set_bindings(bindings, ARRAY_SIZE(bindings));
+			wins_status_bar();
 		} else {
 			wins_resize_panels();
 			wins_update_border(FLAG_ALL);
 			wins_update_panels(FLAG_ALL);
-			keys_display_bindings_bar(win[STA].p, bindings,
-						  bindings_size, 0,
-						  bindings_size);
+			wins_status_bar();
 			wins_doupdate();
 		}
 	}
@@ -314,8 +462,10 @@ void custom_sidebar_config(void)
 static void color_selection_bar(void)
 {
 	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_GENERIC_SELECT, KEY_GENERIC_CANCEL,
-		KEY_MOVE_UP, KEY_MOVE_DOWN, KEY_MOVE_LEFT, KEY_GENERIC_SELECT
+		KEY_GENERIC_QUIT, KEY_GENERIC_SELECT,
+		KEY_MOVE_UP, KEY_MOVE_DOWN,
+		KEY_MOVE_LEFT, KEY_MOVE_RIGHT,
+		KEY_GENERIC_CANCEL
 	};
 	int bindings_size = ARRAY_SIZE(bindings);
 
@@ -504,6 +654,14 @@ void custom_color_config(void)
 			colorize = 0;
 			need_reset = 1;
 			break;
+		case KEY_RESIZE:
+		case ERR:
+			/* Check whether SIGWINCH has been detected. */
+			if (!resize)
+				continue;
+			break;
+		default:
+			break;
 		}
 
 		if (resize) {
@@ -511,12 +669,14 @@ void custom_color_config(void)
 			endwin();
 			wins_refresh();
 			curs_set(0);
+			delwin(conf_win.p);
+			conf_win.p = NULL;
 			need_reset = 1;
 		}
-
-		if (need_reset)
+		if (need_reset) {
+			wins_get_config();
 			confwin_init(&conf_win, label);
-
+		}
 		display_color_config(&conf_win, &mark_fore, &mark_back,
 				     cursor, theme_changed);
 	}
@@ -801,7 +961,8 @@ static void general_option_edit(int i)
 void custom_general_config(void)
 {
 	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_MOVE_UP, KEY_MOVE_DOWN, KEY_EDIT_ITEM
+		KEY_GENERIC_QUIT, KEY_EDIT_ITEM,
+		KEY_MOVE_UP, KEY_MOVE_DOWN
 	};
 	struct listbox lb;
 	int key;
@@ -1075,87 +1236,4 @@ void custom_keys_config(void)
 					LINESPERKEY);
 		wins_scrollwin_display(&kwin, NOHILT);
 	}
-}
-
-void custom_config_main(void)
-{
-	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_CONFIGMENU_GENERAL,
-		KEY_CONFIGMENU_LAYOUT, KEY_CONFIGMENU_SIDEBAR,
-		KEY_CONFIGMENU_COLOR, KEY_CONFIGMENU_NOTIFY,
-		KEY_CONFIGMENU_KEYS
-	};
-	const char *no_color_support =
-	    _("Sorry, colors are not supported by your terminal\n"
-	      "(Press [ENTER] to continue)");
-	int ch;
-	int old_layout;
-
-	wins_set_bindings(bindings, ARRAY_SIZE(bindings));
-	wins_update_border(FLAG_ALL);
-	wins_update_panels(FLAG_ALL);
-	wins_status_bar();
-	if (notify_bar())
-		notify_update_bar();
-	wmove(win[STA].p, 0, 0);
-	wins_doupdate();
-
-	while ((ch = keys_wgetch(win[KEY].p)) != 'q') {
-		switch (ch) {
-		case 'C':
-		case 'c':
-			if (has_colors()) {
-				custom_color_config();
-			} else {
-				colorize = 0;
-				wins_erase_status_bar();
-				mvwaddstr(win[STA].p, 0, 0, no_color_support);
-				keys_wait_for_any_key(win[KEY].p);
-			}
-			break;
-		case 'L':
-		case 'l':
-			old_layout = wins_layout();
-			custom_layout_config();
-			if (wins_layout() != old_layout)
-				wins_reset();
-			break;
-		case 'G':
-		case 'g':
-			custom_general_config();
-			break;
-		case 'N':
-		case 'n':
-			notify_config_bar();
-			break;
-		case 'K':
-		case 'k':
-			custom_keys_config();
-			break;
-		case 's':
-		case 'S':
-			custom_sidebar_config();
-			break;
-		default:
-			break;
-		}
-
-		if (resize) {
-			resize = 0;
-			wins_reset();
-		}
-
-		wins_set_bindings(bindings, ARRAY_SIZE(bindings));
-		wins_update_border(FLAG_ALL);
-		wins_update_panels(FLAG_ALL);
-		wins_status_bar();
-		if (notify_bar())
-			notify_update_bar();
-		wmove(win[STA].p, 0, 0);
-		wins_doupdate();
-	}
-	if (!config_save())
-		EXIT(_("Could not save %s."), path_conf);
-	if (!io_save_keys())
-		EXIT(_("Could not save %s."), path_keys);
 }

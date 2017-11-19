@@ -112,7 +112,7 @@ static inline void key_generic_config_menu(void)
 {
 	wins_erase_status_bar();
 	wins_reset_status_page();
-	custom_config_main();
+	custom_config();
 	do_storage(0);
 	wins_update(FLAG_ALL);
 }

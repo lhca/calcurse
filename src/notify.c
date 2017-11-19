@@ -782,7 +782,8 @@ static void config_option_edit(int i)
 void notify_config_bar(void)
 {
 	static int bindings[] = {
-		KEY_GENERIC_QUIT, KEY_MOVE_UP, KEY_MOVE_DOWN, KEY_EDIT_ITEM
+		KEY_GENERIC_QUIT, KEY_EDIT_ITEM,
+		KEY_MOVE_UP, KEY_MOVE_DOWN
 	};
 	struct listbox lb;
 	int key;

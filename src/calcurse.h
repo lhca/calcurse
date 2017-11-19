@@ -528,14 +528,7 @@ enum key {
 
 	NBKEYS,
 	KEY_UNDEF,
-
-	/* Non-configurable, context sensitive key bindings. */
-	KEY_CONFIGMENU_GENERAL,
-	KEY_CONFIGMENU_LAYOUT,
-	KEY_CONFIGMENU_SIDEBAR,
-	KEY_CONFIGMENU_COLOR,
-	KEY_CONFIGMENU_NOTIFY,
-	KEY_CONFIGMENU_KEYS
+	KEY_BLANK
 };
 
 #define FLAG_CAL (1 << CAL)
@@ -791,7 +784,7 @@ void custom_sidebar_config(void);
 void custom_color_config(void);
 void custom_general_config(void);
 void custom_keys_config(void);
-void custom_config_main(void);
+void custom_config(void);
 
 /* day.c */
 void day_free_vector(void);
