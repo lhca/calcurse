@@ -109,6 +109,22 @@ llist_item_t *llist_next(llist_item_t * i)
 }
 
 /*
+ * Return the predecessor of a list item or itself if head,
+ * or NULL if not in the list.
+ */
+static llist_item_t *llist_prev(llist_t *l, llist_item_t *i)
+{
+	llist_item_t *j;
+
+	if (i == l->head)
+		return i;
+	for (j = l->head; j; j = j->next)
+		if (j->next == i)
+			return j;
+	return NULL;
+}
+
+/*
  * Return the successor of a list item if it is matched by some filter
  * callback. Return NULL otherwise.
  */
@@ -203,6 +219,7 @@ void llist_remove(llist_t * l, llist_item_t * i)
 	}
 }
 
+
 /*
  * Find the first item matched by some filter callback.
  */
@@ -274,4 +291,31 @@ llist_item_t *llist_find_nth(llist_t * l, int n, void *data,
 	}
 
 	return NULL;
+}
+
+/*
+ * Reorder a sorted linked list when a list element has changed.
+ */
+void llist_reorder(llist_t *l, void *data, llist_fn_cmp_t fn_cmp)
+{
+	llist_item_t *o, *p;
+
+	o = llist_find_first(l, data, NULL);
+	if (!o)
+		return;
+	p = llist_prev(l, o);
+
+	/* Sorted already?
+	 * Note: p is either the previous element or o itself.
+	 */
+	if (o->next &&
+	    fn_cmp(p->data, o->data) <= 0 &&
+	    fn_cmp(o->data, o->next->data) <= 0)
+		return;
+	if (!o->next &&
+	    fn_cmp(p->data, o->data) <= 0)
+		return;
+
+	llist_remove(l, o);
+	llist_add_sorted(l, data, fn_cmp);
 }
