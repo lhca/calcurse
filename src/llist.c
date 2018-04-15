@@ -197,6 +197,35 @@ void llist_add_sorted(llist_t * l, void *data, llist_fn_cmp_t fn_cmp)
 }
 
 /*
+ * Insert an existing list item in a sorted list.
+ */
+void llist_relink(llist_t *l, llist_item_t *i, llist_fn_cmp_t fn_cmp)
+{
+	llist_item_t *j;
+
+	if (!i)
+		return;
+
+	if (!l->head) {
+		i->next = NULL;
+		l->head = l->tail = i;
+	} else if (fn_cmp(i->data, l->tail->data) >= 0) {
+		i->next = NULL;
+		l->tail->next = i;
+		l->tail = i;
+	} else if (fn_cmp(i->data, l->head->data) < 0) {
+		i->next = l->head;
+		l->head = i;
+	} else {
+		j = l->head;
+		while (j->next && fn_cmp(i->data, j->next->data) >= 0)
+			j = j->next;
+		i->next = j->next;
+		j->next = i;
+	}
+}
+
+/*
  * Remove an item from a list.
  */
 void llist_remove(llist_t * l, llist_item_t * i)
@@ -219,6 +248,29 @@ void llist_remove(llist_t * l, llist_item_t * i)
 	}
 }
 
+/*
+ * Unlink an item from a list and return it.
+ */
+static llist_item_t *llist_unlink(llist_t *l, llist_item_t *i)
+{
+	llist_item_t *p;
+
+	if (!i)
+		return NULL;
+
+	p = llist_prev(l, i);
+	if (!p)
+		return NULL;
+
+	if (i == l->tail)
+		l->tail = (i == l->head) ? NULL : p;
+	if (i == l->head)
+		l->head = i->next;
+	else
+		p->next = i->next;
+	i->next = NULL;
+	return i;
+}
 
 /*
  * Find the first item matched by some filter callback.
@@ -316,6 +368,6 @@ void llist_reorder(llist_t *l, void *data, llist_fn_cmp_t fn_cmp)
 	    fn_cmp(p->data, o->data) <= 0)
 		return;
 
-	llist_remove(l, o);
-	llist_add_sorted(l, data, fn_cmp);
+	/* Link manipulation only. */
+	llist_relink(l, llist_unlink(l, o), fn_cmp);
 }
