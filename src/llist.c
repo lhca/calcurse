@@ -109,18 +109,30 @@ llist_item_t *llist_next(llist_item_t * i)
 }
 
 /*
- * Return the predecessor of a list item or itself if head,
- * or NULL if not in the list.
+ * Return the predecessor of a list item or, if head, the list item itself,
+ * or if not in the list, NULL.
+ * The list item may be supplied either directly (i) or as a pointer to
+ * the contents (data); the first case takes precedence.
  */
-static llist_item_t *llist_prev(llist_t *l, llist_item_t *i)
+static llist_item_t *llist_prev(llist_t *l, llist_item_t *i, void *data)
 {
 	llist_item_t *j;
 
-	if (i == l->head)
-		return i;
-	for (j = l->head; j; j = j->next)
-		if (j->next == i)
-			return j;
+	if (!i && !data)
+		return NULL;
+
+	if (l->head == i || l->head->data == data)
+		return l->head;
+
+	if (i) {
+		for (j = l->head; j; j = j->next)
+			if (j->next == i)
+				return j;
+	} else {
+		for (j = l->head; j && j->next; j = j->next)
+			if (j->next->data == data)
+				return j;
+	}
 	return NULL;
 }
 
@@ -258,7 +270,7 @@ static llist_item_t *llist_unlink(llist_t *l, llist_item_t *i)
 	if (!i)
 		return NULL;
 
-	p = llist_prev(l, i);
+	p = llist_prev(l, i, NULL);
 	if (!p)
 		return NULL;
 
@@ -352,10 +364,14 @@ void llist_reorder(llist_t *l, void *data, llist_fn_cmp_t fn_cmp)
 {
 	llist_item_t *o, *p;
 
-	o = llist_find_first(l, data, NULL);
-	if (!o)
+	if (!data)
 		return;
-	p = llist_prev(l, o);
+
+	p = llist_prev(l, NULL, data);
+	if (p == l->head)
+		o = p;
+	else
+		o = p->next;
 
 	/* Sorted already?
 	 * Note: p is either the previous element or o itself.
