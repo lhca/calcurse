@@ -248,7 +248,7 @@ void notify_update_bar(void)
 {
 	const int space = 3;
 	int file_pos, date_pos, app_pos, txt_max_len;
-	int time_left, blinking;
+	int time_left;
 
 	date_pos = space;
 	pthread_mutex_lock(&notify.mutex);
@@ -277,12 +277,13 @@ void notify_update_bar(void)
 
 		time_left = notify_time_left();
 		if (time_left > 0) {
-			int hours_left, minutes_left;
+			int blinking, hours_left, minutes_left;
 
-			hours_left = (time_left / HOURINSEC);
-			minutes_left =
-			    (time_left -
-			     hours_left * HOURINSEC) / MININSEC;
+			/* For display purposes round up to the nearest minute. */
+			minutes_left = (time_left / MININSEC) + (time_left % MININSEC ? 1 : 0);
+			hours_left = minutes_left / HOURINMIN;
+			minutes_left = minutes_left % HOURINMIN;
+
 			pthread_mutex_lock(&nbar.mutex);
 
 			blinking = time_left < nbar.cntdwn && notify_trigger();
