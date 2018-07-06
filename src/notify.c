@@ -44,7 +44,6 @@
 #define NOTIFY_FIELD_LENGTH	25
 
 struct notify_vars {
-	WINDOW *win;
 	char *apts_file;
 	char time[NOTIFY_FIELD_LENGTH];
 	char date[NOTIFY_FIELD_LENGTH];
@@ -171,7 +170,7 @@ void notify_init_bar(void)
 	pthread_mutex_init(&notify_app.mutex, NULL);
 	notify_app.got_app = 0;
 	notify_app.txt = 0;
-	notify.win =
+	win[NOT].p =
 	    newwin(win[NOT].h, win[NOT].w, win[NOT].y, win[NOT].x);
 	extract_aptsfile();
 }
@@ -207,8 +206,8 @@ void notify_stop_main_thread(void)
  */
 void notify_reinit_bar(void)
 {
-	delwin(notify.win);
-	notify.win =
+	delwin(win[NOT].p);
+	win[NOT].p =
 	    newwin(win[NOT].h, win[NOT].w, win[NOT].y, win[NOT].x);
 }
 
@@ -259,12 +258,12 @@ void notify_update_bar(void)
 	txt_max_len = MAX(col - (app_pos + 12 + space), 3);
 
 	WINS_NBAR_LOCK;
-	custom_apply_attr(notify.win, ATTR_HIGHEST);
-	wattron(notify.win, A_UNDERLINE | A_REVERSE);
-	mvwhline(notify.win, 0, 0, ACS_HLINE, col);
-	mvwprintw(notify.win, 0, date_pos, "[ %s | %s ]", notify.date,
+	custom_apply_attr(win[NOT].p, ATTR_HIGHEST);
+	wattron(win[NOT].p, A_UNDERLINE | A_REVERSE);
+	mvwhline(win[NOT].p, 0, 0, ACS_HLINE, col);
+	mvwprintw(win[NOT].p, 0, date_pos, "[ %s | %s ]", notify.date,
 		  notify.time);
-	mvwprintw(notify.win, 0, file_pos, "(%s)", notify.apts_file);
+	mvwprintw(win[NOT].p, 0, file_pos, "(%s)", notify.apts_file);
 	WINS_NBAR_UNLOCK;
 
 	pthread_mutex_lock(&notify_app.mutex);
@@ -290,12 +289,12 @@ void notify_update_bar(void)
 
 			WINS_NBAR_LOCK;
 			if (blinking)
-				wattron(notify.win, A_BLINK);
-			mvwprintw(notify.win, 0, app_pos,
+				wattron(win[NOT].p, A_BLINK);
+			mvwprintw(win[NOT].p, 0, app_pos,
 				  "> %02d:%02d :: %s <", hours_left,
 				  minutes_left, buf);
 			if (blinking)
-				wattroff(notify.win, A_BLINK);
+				wattroff(win[NOT].p, A_BLINK);
 			WINS_NBAR_UNLOCK;
 
 			if (blinking)
@@ -312,10 +311,10 @@ void notify_update_bar(void)
 	pthread_mutex_unlock(&notify_app.mutex);
 
 	WINS_NBAR_LOCK;
-	wattroff(notify.win, A_UNDERLINE | A_REVERSE);
-	custom_remove_attr(notify.win, ATTR_HIGHEST);
+	wattroff(win[NOT].p, A_UNDERLINE | A_REVERSE);
+	custom_remove_attr(win[NOT].p, ATTR_HIGHEST);
 	WINS_NBAR_UNLOCK;
-	wins_wrefresh(notify.win);
+	wins_wrefresh(win[NOT].p);
 
 	pthread_mutex_unlock(&notify.mutex);
 }
