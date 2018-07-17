@@ -47,7 +47,6 @@ struct notify_vars {
 	char *apts_file;
 	char time[NOTIFY_FIELD_LENGTH];
 	char date[NOTIFY_FIELD_LENGTH];
-	pthread_mutex_t mutex;
 };
 
 static struct notify_vars notify;
@@ -166,7 +165,6 @@ static void extract_aptsfile(void)
  */
 void notify_init_bar(void)
 {
-	pthread_mutex_init(&notify.mutex, NULL);
 	pthread_mutex_init(&notify_app.mutex, NULL);
 	notify_app.got_app = 0;
 	notify_app.txt = 0;
@@ -240,8 +238,7 @@ unsigned notify_launch_cmd(void)
 }
 
 /*
- * Update the notification bar. This is useful when changing color theme
- * for example.
+ * Update the notification bar.
  */
 static void update_bar(void)
 {
@@ -250,7 +247,6 @@ static void update_bar(void)
 	int time_left;
 
 	date_pos = space;
-	pthread_mutex_lock(&notify.mutex);
 
 	file_pos =
 	    strlen(notify.date) + strlen(notify.time) + 7 + 2 * space;
@@ -303,7 +299,6 @@ static void update_bar(void)
 		} else {
 			notify_app.got_app = 0;
 			pthread_mutex_unlock(&notify_app.mutex);
-			pthread_mutex_unlock(&notify.mutex);
 			notify_check_next_app(0);
 			return;
 		}
@@ -315,15 +310,11 @@ static void update_bar(void)
 	custom_remove_attr(win[NOT].p, ATTR_HIGHEST);
 	WINS_NBAR_UNLOCK;
 	wins_wrefresh(win[NOT].p);
-
-	pthread_mutex_unlock(&notify.mutex);
 }
 
 static void
 notify_main_thread_cleanup(void *arg)
 {
-	pthread_mutex_trylock(&notify.mutex);
-	pthread_mutex_unlock(&notify.mutex);
 	pthread_mutex_trylock(&nbar.mutex);
 	pthread_mutex_unlock(&nbar.mutex);
 }
@@ -346,14 +337,12 @@ static void *notify_main_thread(void *arg)
 	for (;;) {
 		ntimer = time(NULL);
 		localtime_r(&ntimer, &ntime);
-		pthread_mutex_lock(&notify.mutex);
 		pthread_mutex_lock(&nbar.mutex);
 		strftime(notify.time, NOTIFY_FIELD_LENGTH, nbar.timefmt,
 			 &ntime);
 		strftime(notify.date, NOTIFY_FIELD_LENGTH, nbar.datefmt,
 			 &ntime);
 		pthread_mutex_unlock(&nbar.mutex);
-		pthread_mutex_unlock(&notify.mutex);
 		update_bar();
 		psleep(thread_sleep);
 		elapse += thread_sleep;
