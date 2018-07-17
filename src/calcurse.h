@@ -970,7 +970,6 @@ void notify_start_main_thread(void);
 void notify_stop_main_thread(void);
 void notify_reinit_bar(void);
 unsigned notify_launch_cmd(void);
-void notify_update_bar(void);
 unsigned notify_get_next(struct notify_app *);
 unsigned notify_get_next_bkgd(void);
 char *notify_app_txt(void);

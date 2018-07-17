@@ -566,8 +566,6 @@ void wins_update(int flags)
 		wins_update_bindings();
 		wins_status_bar();
 	}
-	if ((flags & FLAG_NOT) && notify_bar())
-		notify_update_bar();
 	wmove(win[STA].p, 0, 0);
 	wins_doupdate();
 }

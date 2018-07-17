@@ -243,7 +243,7 @@ unsigned notify_launch_cmd(void)
  * Update the notification bar. This is useful when changing color theme
  * for example.
  */
-void notify_update_bar(void)
+static void update_bar(void)
 {
 	const int space = 3;
 	int file_pos, date_pos, app_pos, txt_max_len;
@@ -354,7 +354,7 @@ static void *notify_main_thread(void *arg)
 			 &ntime);
 		pthread_mutex_unlock(&nbar.mutex);
 		pthread_mutex_unlock(&notify.mutex);
-		notify_update_bar();
+		update_bar();
 		psleep(thread_sleep);
 		elapse += thread_sleep;
 		if (elapse >= check_app) {
@@ -452,7 +452,6 @@ static void *notify_thread_app(void *arg)
 
 	if (tmp_app.txt)
 		mem_free(tmp_app.txt);
-	notify_update_bar();
 
 	pthread_exit(NULL);
 }
@@ -491,7 +490,6 @@ void notify_check_added(char *mesg, long start, char state)
 		notify_update_app(start, state, mesg);
 	}
 	pthread_mutex_unlock(&notify_app.mutex);
-	notify_update_bar();
 }
 
 /* Check if the newly repeated appointment is to be notified. */
@@ -520,7 +518,6 @@ void notify_check_repeated(struct recur_apoint *i)
 		notify_update_app(real_app_time, i->state, i->mesg);
 	}
 	pthread_mutex_unlock(&notify_app.mutex);
-	notify_update_bar();
 }
 
 int notify_same_item(long time)
@@ -826,7 +823,6 @@ void notify_config_bar(void)
 			keypad(win[STA].p, TRUE);
 			if (notify_bar()) {
 				notify_reinit_bar();
-				notify_update_bar();
 			}
 			clearok(curscr, TRUE);
 		}

@@ -130,7 +130,6 @@ static void confwin_init(struct window *confwin, const char *label)
 	keypad(win[STA].p, TRUE);
 	if (notify_bar()) {
 		notify_reinit_bar();
-		notify_update_bar();
 	}
 }
 
@@ -206,8 +205,6 @@ static void display_layout_config(struct window *lwin, int mark,
 	wnoutrefresh(win[STA].p);
 	wnoutrefresh(lwin->p);
 	wins_doupdate();
-	if (notify_bar())
-		notify_update_bar();
 }
 
 /* Choose the layout */
@@ -443,8 +440,6 @@ display_color_config(struct window *cwin, int *mark_fore, int *mark_back,
 	wnoutrefresh(win[STA].p);
 	wnoutrefresh(cwin->p);
 	wins_doupdate();
-	if (notify_bar())
-		notify_update_bar();
 }
 
 /* Color theme configuration. */
@@ -842,7 +837,6 @@ void custom_general_config(void)
 			keypad(win[STA].p, TRUE);
 			if (notify_bar()) {
 				notify_reinit_bar();
-				notify_update_bar();
 			}
 		}
 
@@ -1064,7 +1058,6 @@ void custom_keys_config(void)
 			keypad(win[STA].p, TRUE);
 			if (notify_bar()) {
 				notify_reinit_bar();
-				notify_update_bar();
 			}
 		}
 
@@ -1095,8 +1088,6 @@ void custom_config_main(void)
 	wins_update_border(FLAG_ALL);
 	wins_update_panels(FLAG_ALL);
 	wins_status_bar();
-	if (notify_bar())
-		notify_update_bar();
 	wmove(win[STA].p, 0, 0);
 	wins_doupdate();
 
@@ -1149,8 +1140,6 @@ void custom_config_main(void)
 		wins_update_border(FLAG_ALL);
 		wins_update_panels(FLAG_ALL);
 		wins_status_bar();
-		if (notify_bar())
-			notify_update_bar();
 		wmove(win[STA].p, 0, 0);
 		wins_doupdate();
 	}
