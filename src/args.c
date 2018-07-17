@@ -209,7 +209,7 @@ static void next_arg(void)
 	next_app.txt = NULL;
 
 	recur_apoint_check_next(&next_app, current_time, get_today());
-	next_app = *apoint_check_next(&next_app, current_time);
+	apoint_check_next(&next_app, current_time);
 
 	if (next_app.got_app) {
 		time_left = next_app.time - current_time;

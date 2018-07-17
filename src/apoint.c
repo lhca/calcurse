@@ -278,16 +278,17 @@ void apoint_delete(struct apoint *apt)
 	LLIST_TS_UNLOCK(&alist_p);
 }
 
-static int apoint_starts_after(struct apoint *apt, long *time)
+static int apoint_starts_after(struct apoint *apt, time_t *time)
 {
 	return apt->start > *time;
 }
 
 /*
- * Look in the appointment list if we have an item which starts before the item
- * stored in the notify_app structure (which is the next item to be notified).
+ * Look in the appointment list if we have an item which starts after start
+ * and before the item stored in the notify_app structure (which is the next
+ * item to be notified). Assumes a sorted appointment list.
  */
-struct notify_app *apoint_check_next(struct notify_app *app, long start)
+void apoint_check_next(struct notify_app *app, time_t start)
 {
 	llist_item_t *i;
 
@@ -296,7 +297,6 @@ struct notify_app *apoint_check_next(struct notify_app *app, long start)
 
 	if (i) {
 		struct apoint *apt = LLIST_TS_GET_DATA(i);
-
 		if (apt->start <= app->time) {
 			app->time = apt->start;
 			app->txt = mem_strdup(apt->mesg);
@@ -306,8 +306,6 @@ struct notify_app *apoint_check_next(struct notify_app *app, long start)
 	}
 
 	LLIST_TS_UNLOCK(&alist_p);
-
-	return app;
 }
 
 /*
@@ -334,4 +332,12 @@ void apoint_paste_item(struct apoint *apt, long date)
 
 	if (notify_bar())
 		notify_check_added(apt->mesg, apt->start, apt->state);
+}
+
+/* Sort the appointment list after change of start time or description */
+void apoint_reorder(struct apoint *apt)
+{
+	LLIST_TS_LOCK(&alist_p);
+	LLIST_TS_REORDER(&alist_p, apt, apoint_cmp);
+	LLIST_TS_UNLOCK(&alist_p);
 }

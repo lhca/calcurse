@@ -335,6 +335,7 @@ void ui_day_item_edit(void)
 	struct recur_apoint *ra;
 	struct apoint *a;
 	int need_check_notify = 0;
+	int need_sort = 0;
 
 	if (day_item_count(0) <= 0)
 		return;
@@ -420,6 +421,7 @@ void ui_day_item_edit(void)
 			(_("Edit: "), choice_appt, 4)) {
 		case 1:
 			need_check_notify = 1;
+			need_sort = 1;
 			update_start_time(&a->start, &a->dur, 1);
 			io_set_modified();
 			break;
@@ -431,17 +433,21 @@ void ui_day_item_edit(void)
 			if (notify_bar())
 				need_check_notify =
 				    notify_same_item(a->start);
+			need_sort = 1;
 			update_desc(&a->mesg);
 			io_set_modified();
 			break;
 		case 4:
 			need_check_notify = 1;
+			need_sort = 1;
 			update_start_time(&a->start, &a->dur, 0);
 			io_set_modified();
 			break;
 		default:
 			return;
 		}
+		if (need_sort)
+			apoint_reorder(a);
 		break;
 	default:
 		break;

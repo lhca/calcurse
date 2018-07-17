@@ -730,9 +730,10 @@ void apoint_write(struct apoint *, FILE *);
 struct apoint *apoint_scan(FILE *, struct tm, struct tm, char, char *,
 			   struct item_filter *);
 void apoint_delete(struct apoint *);
-struct notify_app *apoint_check_next(struct notify_app *, long);
+void apoint_check_next(struct notify_app *, time_t);
 void apoint_switch_notify(struct apoint *);
 void apoint_paste_item(struct apoint *, long);
+void apoint_reorder(struct apoint *);
 
 /* args.c */
 int parse_args(int, char **);
