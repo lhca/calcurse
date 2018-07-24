@@ -172,6 +172,7 @@
 
 /* Mnemonics */
 #define NOHILT		0 	/* 'No highlight' argument */
+#define LINEBUF		80	/* suitable length of a line */
 
 #define ERROR_MSG(...) do {                                                   \
   char msg[BUFSIZ];                                                           \
@@ -460,11 +461,13 @@ enum {
 	TODO_VIEWS
 };
 
+/* Shared variables for the notification threads. */
 struct notify_app {
-	long time;
-	int got_app;
-	char *txt;
-	char state;
+	int got_app;		/* Next appointment found. */
+	int update;		/* Update display. */
+	long time;		/* Next appointment start time. */
+	char *txt;		/* Next appointment text. */
+	char state;		/* Next appointment state. */
 	pthread_mutex_t mutex;
 };
 

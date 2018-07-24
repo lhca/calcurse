@@ -43,13 +43,6 @@
 
 #define NOTIFY_FIELD_LENGTH	25
 
-struct notify_vars {
-	char *apts_file;
-	char time[NOTIFY_FIELD_LENGTH];
-	char date[NOTIFY_FIELD_LENGTH];
-};
-
-static struct notify_vars notify;
 static struct notify_app notify_app;
 static pthread_attr_t detached_thread_attr;
 
@@ -94,6 +87,7 @@ void notify_update_app(long start, char state, char *msg)
 {
 	notify_free_app();
 	notify_app.got_app = 1;
+	notify_app.update = DAYINSEC;
 	notify_app.time = start;
 	notify_app.state = state;
 	notify_app.txt = mem_strdup(msg);
@@ -139,32 +133,23 @@ void notify_init_vars(void)
 }
 
 /* Extract the appointment file name from the complete file path. */
-static void extract_aptsfile(void)
+static int extract_aptsfile(char **file)
 {
-	char *file;
-
-	file = strrchr(path_apts, '/');
-	if (!file) {
-		notify.apts_file = path_apts;
-	} else {
-		notify.apts_file = file;
-		notify.apts_file++;
-	}
+	*file = strrchr(path_apts, '/');
+	if (!*file)
+		*file = path_apts;
+	else
+		(*file)++;
+	return strlen(*file);
 }
 
-/*
- * Create the notification bar, by initializing all the variables and
- * creating the notification window (l is the number of lines, c the
- * number of columns, y and x are its coordinates).
- */
+/* Create the notification bar window. */
 void notify_init_bar(void)
 {
 	pthread_mutex_init(&notify_app.mutex, NULL);
-	notify_app.got_app = 0;
-	notify_app.txt = 0;
+	notify_free_app();
 	win[NOT].p =
 	    newwin(win[NOT].h, win[NOT].w, win[NOT].y, win[NOT].x);
-	extract_aptsfile();
 }
 
 /*
@@ -174,6 +159,7 @@ void notify_init_bar(void)
 void notify_free_app(void)
 {
 	notify_app.time = 0;
+	notify_app.update = DAYINSEC;
 	notify_app.got_app = 0;
 	notify_app.state = APOINT_NULL;
 	if (notify_app.txt)
@@ -232,82 +218,9 @@ unsigned notify_launch_cmd(void)
 	return 1;
 }
 
-/*
- * Update the notification bar.
- */
-static void update_bar(void)
+static void notify_main_thread_cleanup(void *arg)
 {
-	const int space = 3;
-	int file_pos, date_pos, app_pos, txt_max_len;
-	int time_left;
-
-	date_pos = space;
-
-	file_pos =
-	    strlen(notify.date) + strlen(notify.time) + 7 + 2 * space;
-	app_pos = file_pos + strlen(notify.apts_file) + 2 + space;
-	txt_max_len = MAX(col - (app_pos + 12 + space), 3);
-
-	WINS_NBAR_LOCK;
-	custom_apply_attr(win[NOT].p, ATTR_HIGHEST);
-	wattron(win[NOT].p, A_UNDERLINE | A_REVERSE);
-	mvwhline(win[NOT].p, 0, 0, ACS_HLINE, col);
-	mvwprintw(win[NOT].p, 0, date_pos, "[ %s | %s ]", notify.date,
-		  notify.time);
-	mvwprintw(win[NOT].p, 0, file_pos, "(%s)", notify.apts_file);
-	WINS_NBAR_UNLOCK;
-
-	pthread_mutex_lock(&notify_app.mutex);
-	if (notify_app.got_app) {
-		char buf[txt_max_len * UTF8_MAXLEN];
-
-		strncpy(buf, notify_app.txt, txt_max_len * UTF8_MAXLEN);
-		buf[sizeof(buf) - 1] = '\0';
-		utf8_chop(buf, txt_max_len);
-
-		time_left = notify_time_left();
-		if (time_left > 0) {
-			int blinking, hours_left, minutes_left;
-
-			/* For display purposes round up to the nearest minute. */
-			minutes_left = (time_left / MININSEC) + (time_left % MININSEC ? 1 : 0);
-			hours_left = minutes_left / HOURINMIN;
-			minutes_left = minutes_left % HOURINMIN;
-
-			pthread_mutex_lock(&nbar.mutex);
-
-			blinking = time_left < nbar.cntdwn && notify_trigger();
-
-			WINS_NBAR_LOCK;
-			if (blinking)
-				wattron(win[NOT].p, A_BLINK);
-			mvwprintw(win[NOT].p, 0, app_pos,
-				  "> %02d:%02d :: %s <", hours_left,
-				  minutes_left, buf);
-			if (blinking)
-				wattroff(win[NOT].p, A_BLINK);
-			WINS_NBAR_UNLOCK;
-
-			if (blinking)
-				notify_launch_cmd();
-			pthread_mutex_unlock(&nbar.mutex);
-		}  else
-			notify_check_next_app(0);
-	}
 	pthread_mutex_unlock(&notify_app.mutex);
-
-	WINS_NBAR_LOCK;
-	wattroff(win[NOT].p, A_UNDERLINE | A_REVERSE);
-	custom_remove_attr(win[NOT].p, ATTR_HIGHEST);
-	WINS_NBAR_UNLOCK;
-	wins_wrefresh(win[NOT].p);
-}
-
-static void
-notify_main_thread_cleanup(void *arg)
-{
-	pthread_mutex_trylock(&nbar.mutex);
-	pthread_mutex_unlock(&nbar.mutex);
 }
 
 /* Update the notication bar content */
@@ -315,32 +228,89 @@ notify_main_thread_cleanup(void *arg)
 static void *notify_main_thread(void *arg)
 {
 	const unsigned thread_sleep = 1;
-	const unsigned check_app = MININSEC;
-	int elapse = 0;
-	struct tm ntime;
-	time_t ntimer;
+	struct tm tm;
+	time_t ntimer, last_check;
+	int time_left, rem, reminder, bar_hours, bar_mins;
+	int t, d, f, file_pos, date_pos, app_pos, txt_max_len;
+	const int space = 3;
+	char bar_time[NOTIFY_FIELD_LENGTH];
+	char bar_date[NOTIFY_FIELD_LENGTH];
+	char bar_mesg[LINEBUF];
+	char *bar_file;
 
-	elapse = 0;
+	date_pos = space;
+	file_pos = app_pos = 0;
+	last_check = 0;
+	reminder = bar_hours = bar_mins = 0;
+	f = extract_aptsfile(&bar_file);
 
 	pthread_cleanup_push(notify_main_thread_cleanup, NULL);
-
 	for (;;) {
+		/* Prepare the clock. */
 		ntimer = time(NULL);
-		localtime_r(&ntimer, &ntime);
-		pthread_mutex_lock(&nbar.mutex);
-		strftime(notify.time, NOTIFY_FIELD_LENGTH, nbar.timefmt,
-			 &ntime);
-		strftime(notify.date, NOTIFY_FIELD_LENGTH, nbar.datefmt,
-			 &ntime);
-		pthread_mutex_unlock(&nbar.mutex);
-		update_bar();
-		psleep(thread_sleep);
-		elapse += thread_sleep;
-		if (elapse >= check_app) {
-			elapse = 0;
-			if (!notify_app.got_app)
+		localtime_r(&ntimer, &tm);
+		t = strftime(bar_time, NOTIFY_FIELD_LENGTH, nbar.timefmt, &tm);
+		d = strftime(bar_date, NOTIFY_FIELD_LENGTH, nbar.datefmt, &tm);
+
+		time_left = 0;
+		pthread_mutex_lock(&notify_app.mutex);
+		if (notify_app.got_app) {
+			/*
+			 * Prepare the next appointment once every minute.
+			 * Note that the appointment may have changed.
+			 */
+			time_left = notify_app.time - ntimer;
+			if (time_left > 0 && time_left <= notify_app.update) {
+				file_pos = date_pos + t + d + 7 + space;
+				app_pos = file_pos + f + 2 + space;
+				/* Round up to nearest minute. */
+				rem = time_left % MININSEC;
+				bar_mins = time_left / MININSEC + (rem ? 1 : 0);
+				bar_hours = bar_mins / HOURINMIN;
+				bar_mins = bar_mins % HOURINMIN;
+				strncpy(bar_mesg, notify_app.txt, LINEBUF);
+				bar_mesg[LINEBUF - 1] = '\0';
+				txt_max_len = MAX(col - (app_pos + 13 + space), 3);
+				utf8_chop(bar_mesg, txt_max_len);
+				reminder = time_left <= nbar.cntdwn && notify_trigger();
+				if (reminder)
+					notify_launch_cmd();
+				/*
+				 * Next update: round down to nearest minute.
+				 * This takes care of start up as well as a changed appointment.
+				 */
+				notify_app.update = time_left - MININSEC + (rem ? MININSEC - rem : 0);
+			} else if (time_left <= 0)
 				notify_check_next_app(0);
+		} else { /* Check for next appointment once every minute. */
+			if (ntimer > last_check + MININSEC) {
+				notify_check_next_app(0);
+				last_check = ntimer;
+			}
 		}
+		pthread_mutex_unlock(&notify_app.mutex);
+
+		/* Display everything. */
+		WINS_NBAR_LOCK;
+		custom_apply_attr(win[NOT].p, ATTR_HIGHEST);
+		wattron(win[NOT].p, A_REVERSE);
+		mvwhline(win[NOT].p, 0, 0, ACS_HLINE, col);
+		mvwprintw(win[NOT].p, 0, date_pos, "[ %s | %s ]", bar_date, bar_time);
+		if (time_left > 0) {
+			mvwprintw(win[NOT].p, 0, file_pos, "(%s)", bar_file);
+			if (reminder)
+				wattron(win[NOT].p, A_BLINK);
+			mvwprintw(win[NOT].p, 0, app_pos, "> %02d:%02d :: %s <",
+				  bar_hours, bar_mins, bar_mesg);
+			if (reminder)
+				wattroff(win[NOT].p, A_BLINK);
+		}
+		wattroff(win[NOT].p, A_REVERSE);
+		custom_remove_attr(win[NOT].p, ATTR_HIGHEST);
+		WINS_NBAR_UNLOCK;
+
+		wins_wrefresh(win[NOT].p);
+		psleep(thread_sleep);
 	}
 
 	pthread_cleanup_pop(0);
@@ -413,7 +383,6 @@ static void *notify_thread_app(void *arg)
 
 	if (!notify_get_next(&tmp_app))
 		pthread_exit(NULL);
-
 	if (!tmp_app.got_app) {
 		pthread_mutex_lock(&notify_app.mutex);
 		notify_free_app();
@@ -531,8 +500,12 @@ void notify_start_main_thread(void)
         /* Avoid starting the notification bar thread twice. */
 	notify_stop_main_thread();
 
+	/*
+	 * The shared notify_app structure may be stale (if the main
+	 * thread was stopped and relaunched).
+	 */
+	notify_check_next_app(1);
 	pthread_create(&notify_t_main, NULL, notify_main_thread, NULL);
-	notify_check_next_app(0);
 }
 
 /*
