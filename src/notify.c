@@ -56,7 +56,7 @@ int notify_time_left(void)
 	return left > 0 ? left : 0;
 }
 
-static unsigned notify_trigger(void)
+unsigned notify_trigger(void)
 {
 	int flagged = notify_app.state & APOINT_NOTIFY;
 
@@ -67,16 +67,6 @@ static unsigned notify_trigger(void)
 	if (nbar.notify_all == NOTIFY_UNFLAGGED_ONLY)
 		flagged = !flagged;
 	return flagged;
-}
-
-/*
- * Return 1 if the reminder was not sent already for the upcoming appointment.
- */
-unsigned notify_needs_reminder(void)
-{
-	if (notify_app.state & APOINT_NOTIFIED)
-		return 0;
-	return notify_trigger();
 }
 
 /*
@@ -196,7 +186,7 @@ unsigned notify_launch_cmd(void)
 	int pid;
 
 	if (notify_app.state & APOINT_NOTIFIED)
-		return 1;
+		return 2;
 
 	notify_app.state |= APOINT_NOTIFIED;
 
@@ -334,34 +324,6 @@ unsigned notify_get_next(struct notify_app *a)
 	recur_apoint_check_next(a, current_time, get_today());
 	apoint_check_next(a, current_time);
 
-	return 1;
-}
-
-/*
- * This is used for the daemon to check if we have an upcoming appointment or
- * not.
- */
-unsigned notify_get_next_bkgd(void)
-{
-	struct notify_app a;
-
-	a.txt = NULL;
-	if (!notify_get_next(&a))
-		return 0;
-	if (!a.got_app) {
-		/* No next appointment, reset the previous notified one. */
-		pthread_mutex_lock(&notify_app.mutex);
-		notify_free_app();
-		pthread_mutex_unlock(&notify_app.mutex);
-	} else {
-		if (!notify_same_item(a.time)) {
-			pthread_mutex_lock(&notify_app.mutex);
-			notify_update_app(a.time, a.state, a.txt);
-			pthread_mutex_unlock(&notify_app.mutex);
-		}
-	}
-	if (a.txt)
-		mem_free(a.txt);
 	return 1;
 }
 

@@ -808,7 +808,7 @@ void day_view_note(struct day_item *, const char *);
 void day_item_switch_notify(struct day_item *);
 
 /* dmon.c */
-void dmon_start(int);
+void dmon_start(void);
 void dmon_stop(void);
 
 /* event.c */
@@ -963,7 +963,7 @@ void note_gc(void);
 
 /* notify.c */
 int notify_time_left(void);
-unsigned notify_needs_reminder(void);
+unsigned notify_trigger(void);
 void notify_update_app(long, char, char *);
 int notify_bar(void);
 void notify_init_vars(void);

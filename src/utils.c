@@ -72,8 +72,6 @@ enum format_specifier {
 /* General routine to exit calcurse properly. */
 void exit_calcurse(int status)
 {
-	int was_interactive;
-
 	ui_calendar_stop_date_thread();
 	io_stop_psave_thread();
 
@@ -82,24 +80,15 @@ void exit_calcurse(int status)
 		clear();
 		wins_refresh();
 		endwin();
-		ui_mode = UI_CMDLINE;
-		was_interactive = 1;
-	} else {
-		was_interactive = 0;
+		if (dmon.enable)
+			dmon_start();
 	}
-
 	free_user_data();
 	keys_free();
 	mem_stats();
-
-	if (was_interactive) {
-		if (unlink(path_cpid) != 0)
-			EXIT(_("Could not remove calcurse lock file: %s\n"),
-			     strerror(errno));
-		if (dmon.enable)
-			dmon_start(status);
-	}
-
+	if (ui_mode == UI_CURSES && unlink(path_cpid) != 0)
+		EXIT(_("Could not remove calcurse lock file: %s\n"),
+		     strerror(errno));
 	exit(status);
 }
 

@@ -408,7 +408,7 @@ int parse_args(int argc, char **argv)
 	const char *cfile = NULL, *ifile = NULL, *confdir = NULL;
 
 	int non_interactive = 1;
-	int ch;
+	int ch, cpid;
 	regex_t reg;
 
 	static const char *optstr = "FgGhvnNax::t::C:d:c:r::s::S:D:i:l:qQ";
@@ -692,7 +692,10 @@ int parse_args(int argc, char **argv)
 			status = 1;
 			break;
 		case OPT_DAEMON:
+			EXIT_IF(cpid = io_get_pid(path_cpid),
+				_("calcurse is running (pid = %d)"), cpid);
 			daemon = 1;
+			filter.type_mask = TYPE_MASK_APPT | TYPE_MASK_RECUR_APPT;
 			break;
 		default:
 			usage();
@@ -813,9 +816,9 @@ int parse_args(int argc, char **argv)
 		io_load_data(&filter);
 		io_export_data(xfmt, export_uid);
 	} else if (daemon) {
-		notify_init_vars();
 		dmon_stop();
-		dmon_start(0);
+		io_load_app(&filter);
+		dmon_start();
 	} else {
 		/* interactive mode */
 		non_interactive = 0;

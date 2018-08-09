@@ -48,8 +48,16 @@
 #define DMON_SLEEP_TIME  60
 
 #define DMON_LOG(...) do {                                      \
-  if (dmon.log)                                                 \
-    io_fprintln (path_dmon_log, __VA_ARGS__);                   \
+  if (dmon.log) {                                               \
+    char _msg[BUFSIZ];                                          \
+    int _len;                                                   \
+    struct tm _tm;                                              \
+    time_t _now = time(NULL);                                   \
+    localtime_r(&_now, &_tm);                                   \
+    _len = strftime(_msg, BUFSIZ, "%F %T ", &_tm);              \
+    snprintf(_msg + _len, BUFSIZ - _len, __VA_ARGS__);          \
+    io_fprintln (path_dmon_log, _msg);                          \
+  }                                                             \
 } while (0)
 
 #define DMON_ABRT(...) do {                                     \
@@ -62,48 +70,27 @@
     }                                                           \
 } while (0)
 
-static unsigned data_loaded;
-
 static void dmon_sigs_hdlr(int sig)
 {
 	if (sig == SIGUSR1) {
+		DMON_LOG(_("Reload signal %d\n"), sig);
 		want_reload = 1;
 		return;
 	}
-
-	if (data_loaded)
-		free_user_data();
-
-	DMON_LOG(_("terminated at %s with signal %d\n"), nowstr(), sig);
-
+	DMON_LOG(_("Stop  signal %d\n"), sig);
+	apoint_llist_free();
+	recur_apoint_llist_free();
 	if (unlink(path_dpid) != 0) {
 		DMON_LOG(_("Could not remove daemon lock file: %s\n"),
 			 strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-
 	exit(EXIT_SUCCESS);
 }
 
-static unsigned daemonize(int status)
+static unsigned daemonize(void)
 {
 	int fd;
-
-	/*
-	 * Operate in the background: Daemonizing.
-	 *
-	 * First need to fork in order to become a child of the init process,
-	 * once the father exits.
-	 */
-	switch (fork()) {
-	case -1:		/* fork error */
-		EXIT(_("Could not fork: %s\n"), strerror(errno));
-		break;
-	case 0:		/* child */
-		break;
-	default:		/* parent */
-		exit(status);
-	}
 
 	/*
 	 * Process independency.
@@ -150,58 +137,89 @@ static unsigned daemonize(int status)
 	return 1;
 }
 
-void dmon_start(int parent_exit_status)
+void dmon_start(void)
 {
-	if (!daemonize(parent_exit_status))
-		DMON_ABRT(_("Cannot daemonize, aborting\n"));
+	struct notify_app a;
+	int left, nap;
 
+	/*
+	 * First need to fork in order to become a child of the init process,
+	 * once the parent exits.
+	 */
+	switch (fork()) {
+	case -1:		/* fork error */
+		EXIT(_("Could not fork: %s\n"), strerror(errno));
+		break;
+	case 0:			/* child */
+		break;
+	default:		/* parent */
+		return;
+	}
+
+	if (!daemonize())
+		DMON_ABRT(_("Cannot daemonize, aborting\n"));
 	if (!io_dump_pid(path_dpid))
 		DMON_ABRT(_("Could not set lock file\n"));
-
-	if (!io_file_exists(path_conf))
-		DMON_ABRT(_("Could not access \"%s\": %s\n"), path_conf,
-			  strerror(errno));
-	config_load();
-
 	if (!io_file_exists(path_apts))
 		DMON_ABRT(_("Could not access \"%s\": %s\n"), path_apts,
 			  strerror(errno));
-	apoint_llist_init();
-	recur_apoint_llist_init();
-	event_llist_init();
-	recur_event_llist_init();
-	todo_init_list();
-	io_load_app(NULL);
-	data_loaded = 1;
+	DMON_LOG("\n");
+	/* Non-interactive */
+	ui_mode = UI_CMDLINE; /* the only possibility */
+	nbar.show = 0;
+	quiet = 1;
 
-	DMON_LOG(_("started at %s\n"), nowstr());
+	/*
+	 * Data in memory are inherited after fork().
+	 * Free those which are not needed.
+	 */
+	day_free_vector();
+	event_llist_free();
+	recur_event_llist_free();
+	for (int i = 0; i <= 37; i++)
+		ui_day_item_cut_free(i);
+	todo_free_list();
+	keys_free();
+
+	DMON_LOG(_("Start\n"));
 	for (;;) {
-		int left;
+		DMON_LOG(_("Awake\n"));
 
 		if (want_reload) {
 			want_reload = 0;
+			DMON_LOG(_("Reloading\n"));
 			io_reload_data();
-			notify_check_next_app(1);
 		}
 
-		if (!notify_get_next_bkgd())
-			DMON_ABRT(_("error loading next appointment\n"));
+		if (!notify_get_next(&a))
+			DMON_ABRT(_("Error finding next appointment\n"));
+		if (!a.got_app) {
+			notify_free_app();
+		} else {
+			if (!notify_same_item(a.time)) {
+				notify_update_app(a.time, a.state, a.txt);
+			}
+		}
+		if (a.txt)
+			mem_free(a.txt);
 
 		left = notify_time_left();
-		if (left > 0 && left < nbar.cntdwn
-		    && notify_needs_reminder()) {
-			DMON_LOG(_("launching notification at %s for: \"%s\"\n"),
-				 nowstr(), notify_app_txt());
-			if (!notify_launch_cmd())
-				DMON_LOG(_("error while sending notification\n"));
+		if (left > 0 && left <= nbar.cntdwn && notify_trigger()) {
+			switch(notify_launch_cmd()) {
+			case 0:
+				DMON_LOG(_("Error while sending notification\n"));
+				break;
+			case 1:
+				DMON_LOG(_("Launch notification: \"%s\"\n"), notify_app_txt());
+				break;
+			}
 		}
 
-		DMON_LOG(ngettext("sleeping at %s for %d second\n",
-				  "sleeping at %s for %d seconds\n",
-				  DMON_SLEEP_TIME), nowstr(),
-			 DMON_SLEEP_TIME);
-		psleep(DMON_SLEEP_TIME);
-		DMON_LOG(_("awakened at %s\n"), nowstr());
+		/* Wake up on the minute. */
+		nap = time(NULL) % MININSEC;
+		nap = nap ? MININSEC - nap : DMON_SLEEP_TIME;
+		DMON_LOG(_("Sleep %d seconds\n"), nap);
+		psleep(nap);
 	}
 }
 
