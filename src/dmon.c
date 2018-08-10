@@ -204,7 +204,8 @@ void dmon_start(void)
 			mem_free(a.txt);
 
 		left = notify_time_left();
-		if (left > 0 && left <= nbar.cntdwn && notify_trigger()) {
+		if (left > 0 && left <= nbar.cntdwn &&
+			notify_trigger() && nbar.cmd[0] != '#') {
 			switch(notify_launch_cmd()) {
 			case 0:
 				DMON_LOG(_("Error while sending notification\n"));

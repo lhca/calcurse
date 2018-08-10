@@ -263,7 +263,7 @@ static void *notify_main_thread(void *arg)
 				txt_max_len = MAX(col - (app_pos + 13 + space), 3);
 				utf8_chop(bar_mesg, txt_max_len);
 				reminder = time_left <= nbar.cntdwn && notify_trigger();
-				if (reminder)
+				if (reminder && nbar.cmd[0] != '#')
 					notify_launch_cmd();
 				/*
 				 * Next update: round down to nearest minute.
