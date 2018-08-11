@@ -389,9 +389,7 @@ void ui_day_item_edit(void)
 			io_set_modified();
 			break;
 		case 3:
-			if (notify_bar())
-				need_check_notify =
-				    notify_same_recur_item(ra);
+			need_check_notify = notify_same_recur_item(ra);
 			update_desc(&ra->mesg);
 			io_set_modified();
 			break;
@@ -430,9 +428,7 @@ void ui_day_item_edit(void)
 			io_set_modified();
 			break;
 		case 3:
-			if (notify_bar())
-				need_check_notify =
-				    notify_same_item(a->start);
+			need_check_notify = notify_same_item(a->start);
 			need_sort = 1;
 			update_desc(&a->mesg);
 			io_set_modified();

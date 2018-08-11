@@ -367,6 +367,9 @@ static void *notify_thread_app(void *arg)
 /* Launch the thread notify_thread_app to look for next appointment. */
 void notify_check_next_app(int force)
 {
+	if (!notify_bar())
+		return;
+
 	pthread_t notify_t_app;
 	void *arg = (force ? (void *)1 : NULL);
 
