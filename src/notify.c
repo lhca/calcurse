@@ -184,26 +184,63 @@ void notify_reinit_bar(void)
 unsigned notify_launch_cmd(void)
 {
 	int pid;
+	char *cmdbuf, *p, *q, *datestr;
 
 	if (notify_app.state & APOINT_NOTIFIED)
 		return 2;
-
 	notify_app.state |= APOINT_NOTIFIED;
 
-	pid = fork();
+	/*
+	 * Expand the shell command. Note that nbar.cmd contains at most
+	 * LINEBUF characters.
+	 */
+	cmdbuf = mem_malloc(2 * LINEBUF + strlen(notify_app.txt));
+	for (p = nbar.cmd, q = cmdbuf; *p; p++) {
+		if (*p == '%') {
+			p++;
+			switch (*p) {
+			case 'd': /* date */
+				datestr = date_sec2date_str(notify_app.time, nbar.datefmt);
+				strcpy(q, datestr);
+				q += strlen(datestr);
+				mem_free(datestr);
+				break;
+			case 'm': /* message */
+				strcpy(q, notify_app.txt);
+				q += strlen(notify_app.txt);
+				break;
+			case 't': /* time */
+				datestr = date_sec2date_str(notify_app.time, "%H:%M");
+				strcpy(q, datestr);
+				q += strlen(datestr);
+				mem_free(datestr);
+				break;
+			case '%':
+				*q++ = '%';
+				break;
+			default:
+				*q++ = '%';
+				*q++ = *p;
+			}
+		} else
+			*q++ = *p;
+	}
+	*q = '\0';
 
+	pid = fork();
 	if (pid < 0) {
 		ERROR_MSG(_("error while launching command: could not fork"));
 		return 0;
 	} else if (pid == 0) {
 		/* Child: launch user defined command */
-		if (execlp(nbar.shell, nbar.shell, "-c", nbar.cmd, NULL) <
+		if (execlp(nbar.shell, nbar.shell, "-c", cmdbuf, NULL) <
 		    0) {
 			ERROR_MSG(_("error while launching command"));
 			_exit(1);
 		}
 		_exit(0);
-	}
+	} else
+		mem_free(cmdbuf);
 
 	return 1;
 }
