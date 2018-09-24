@@ -364,11 +364,11 @@ void llist_reorder(llist_t *l, void *data, llist_fn_cmp_t fn_cmp)
 {
 	llist_item_t *o, *p;
 
-	if (!data)
+	if (!(p = llist_prev(l, NULL, data)))
 		return;
 
-	p = llist_prev(l, NULL, data);
-	if (p == l->head)
+	/* List head? */
+	if (p->data == data)
 		o = p;
 	else
 		o = p->next;
